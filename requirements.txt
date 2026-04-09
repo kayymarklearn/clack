@@ -1,0 +1,5 @@
+pygame>=2.5.0
+PyQt6>=6.6.0
+evdev>=1.6.0
+keyboard>=0.13.0
+pynput>=1.7.6

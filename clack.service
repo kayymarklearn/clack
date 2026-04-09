@@ -1,0 +1,13 @@
+[Unit]
+Description=Clack - Mechanical Keyboard Click Sound App
+After=graphical.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env python3 /home/konlan/Work/clack/clack.py
+Restart=on-failure
+Environment=DISPLAY=:0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+
+[Install]
+WantedBy=default.target
