@@ -43,6 +43,9 @@ def _normalize_key_name(raw: str) -> str:
         "capslock": "caps_lock",
         "numlock": "num_lock",
         "scrolllock": "scroll_lock",
+        "btn left": "mouse_left",
+        "btn right": "mouse_right",
+        "btn middle": "mouse_middle",
     }
     return aliases.get(name, name)
 
@@ -117,12 +120,24 @@ class KeyboardListener(threading.Thread):
             ecodes.KEY_SPACE,
             ecodes.KEY_ENTER,
         }
+        mouse_markers = {
+            ecodes.BTN_LEFT,
+            ecodes.BTN_RIGHT,
+            ecodes.BTN_MIDDLE,
+        }
 
         for path in list_devices():
             try:
                 dev = InputDevice(path)
                 keys = dev.capabilities().get(ecodes.EV_KEY, [])
-                if not keys or not keyboard_markers.intersection(keys):
+                if not keys:
+                    dev.close()
+                    continue
+                keyset = set(k for k in keys if isinstance(k, int))
+                if not (
+                    keyboard_markers.intersection(keyset)
+                    or mouse_markers.intersection(keyset)
+                ):
                     dev.close()
                     continue
                 devices.append(dev)
@@ -167,7 +182,18 @@ class KeyboardListener(threading.Thread):
                             continue
                         if event.value not in (1, 2):
                             continue
-                        key_name = ecodes.KEY.get(event.code, f"KEY_{event.code}")
+                        name_entry = ecodes.bytype[ecodes.EV_KEY].get(event.code)
+                        if isinstance(name_entry, tuple):
+                            key_name = name_entry[0]
+                        elif isinstance(name_entry, str):
+                            key_name = name_entry
+                        else:
+                            key_name = f"KEY_{event.code}"
+                        if not (
+                            key_name.startswith("KEY_")
+                            or key_name in ("BTN_LEFT", "BTN_RIGHT", "BTN_MIDDLE")
+                        ):
+                            continue
                         key_name = _normalize_key_name(key_name)
                         is_modifier = key_name in MODIFIER_KEYS
                         self._callback(key_name, is_modifier, event.value)

@@ -15,6 +15,7 @@ class AudioEngine:
     def __init__(self):
         self._sounds = {}
         self._modifier_sounds = {}
+        self._mouse_sounds = {}
         self._volume = 0.7
         self._sounds_dir = get_sounds_dir()
         self._player = self._detect_player()
@@ -39,6 +40,21 @@ class AudioEngine:
             default_mod = mod_dir / "default.wav"
             if default_mod.exists():
                 self._modifier_sounds["default"] = str(default_mod)
+
+        mouse_dir = self._sounds_dir / "mouse"
+        if mouse_dir.exists():
+            left = mouse_dir / "left.wav"
+            right = mouse_dir / "right.wav"
+            middle = mouse_dir / "middle.wav"
+            default_mouse = mouse_dir / "default.wav"
+            if left.exists():
+                self._mouse_sounds["left"] = str(left)
+            if right.exists():
+                self._mouse_sounds["right"] = str(right)
+            if middle.exists():
+                self._mouse_sounds["middle"] = str(middle)
+            if default_mouse.exists():
+                self._mouse_sounds["default"] = str(default_mouse)
 
     def set_volume(self, volume: float):
         self._volume = max(0.0, min(1.0, volume))
@@ -66,6 +82,24 @@ class AudioEngine:
                 logger.error(f"Failed to play: {e}")
         else:
             logger.warning(f"No sound file for profile={profile}")
+
+    def play_mouse(self, button: str):
+        if not self._mouse_sounds:
+            return
+
+        sound_file = self._mouse_sounds.get(button) or self._mouse_sounds.get(
+            "default"
+        )
+        if not sound_file:
+            return
+
+        try:
+            threading.Thread(
+                target=self._play_sound, args=(sound_file, self._volume), daemon=True
+            ).start()
+            logger.debug(f"Playing mouse: {sound_file}")
+        except Exception as e:
+            logger.error(f"Failed to play mouse: {e}")
 
     def _detect_player(self):
         if which("paplay"):

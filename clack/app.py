@@ -14,6 +14,7 @@ from clack.keyboard import KeyboardListener
 class Signals(QObject):
     key_pressed = pyqtSignal(str, bool)
     toggle_requested = pyqtSignal()
+    mouse_clicked = pyqtSignal(str)
 
 
 class ClackApp:
@@ -28,9 +29,14 @@ class ClackApp:
         self.signals = Signals()
         self.listener = None
         self._last_hotkey_time = 0.0
+        self._last_left_click_time = 0.0
+        self._double_click_interval = (
+            self.config.get("double_click_interval_ms", 500) / 1000.0
+        )
 
         self._setup_tray()
         self.signals.toggle_requested.connect(self.toggle)
+        self.signals.mouse_clicked.connect(self._play_mouse)
         self._start_listening()
 
     def _setup_tray(self):
@@ -75,6 +81,15 @@ class ClackApp:
             action.triggered.connect(lambda checked, p=profile: self._set_profile(p))
             self.profile_actions[profile] = action
             self.menu.addAction(action)
+
+        self.menu.addSeparator()
+        self.mouse_action = QAction(
+            "Mouse clicks",
+            checkable=True,
+            checked=self.config.get("play_mouse", True),
+        )
+        self.mouse_action.triggered.connect(self._set_mouse_clicks)
+        self.menu.addAction(self.mouse_action)
 
         self.menu.addSeparator()
 
@@ -141,6 +156,14 @@ class ClackApp:
                     self.signals.toggle_requested.emit()
                 return
 
+            mouse_button = self._mouse_button_from_key(key_name)
+            if mouse_button:
+                if event_value != 1:
+                    return
+                if self.config["enabled"] and self.config.get("play_mouse", True):
+                    self._handle_mouse_click(mouse_button)
+                return
+
             if self.config["enabled"]:
                 self.signals.key_pressed.emit(key_name, is_modifier)
 
@@ -166,6 +189,24 @@ class ClackApp:
         logger.debug(f"Playing with profile: {profile}")
         self.audio.play_click(key_name, profile, is_modifier)
 
+    def _play_mouse(self, button: str):
+        if not self.config["enabled"] or not self.config.get("play_mouse", True):
+            return
+        self.audio.play_mouse(button)
+
+    def _handle_mouse_click(self, button: str):
+        if button == "right":
+            self.signals.mouse_clicked.emit("right")
+            return
+
+        if button == "left":
+            now = time.monotonic()
+            if now - self._last_left_click_time <= self._double_click_interval:
+                self._last_left_click_time = 0.0
+                self.signals.mouse_clicked.emit("left")
+            else:
+                self._last_left_click_time = now
+
     @staticmethod
     def _normalize_key(value: str) -> str:
         return "".join(ch for ch in value.lower() if ch.isalnum())
@@ -173,6 +214,12 @@ class ClackApp:
     def _is_hotkey(self, key_name: str) -> bool:
         hotkey = self.config.get("hotkey", "F12")
         return self._normalize_key(hotkey) == self._normalize_key(key_name)
+
+    @staticmethod
+    def _mouse_button_from_key(key_name: str):
+        if key_name.startswith("mouse_"):
+            return key_name.split("_", 1)[1]
+        return None
 
     def _set_volume(self, volume: int):
         self.config["volume"] = volume
@@ -189,6 +236,10 @@ class ClackApp:
         for key, action in self.profile_actions.items():
             action.setChecked(key == profile)
 
+    def _set_mouse_clicks(self, enabled: bool):
+        self.config["play_mouse"] = enabled
+        save_config(self.config)
+
     def _show_settings(self):
         msg = QMessageBox()
         msg.setWindowTitle("Clack Settings")
@@ -198,6 +249,7 @@ class ClackApp:
             f"Volume: {self.config['volume']}%\n"
             f"Sound: {self.config['sound_profile']}\n"
             f"Hotkey: {self.config['hotkey']}\n"
+            f"Mouse clicks: {'Yes' if self.config.get('play_mouse', True) else 'No'}\n"
             f"Auto-start: {'Yes' if self.config['startup'] else 'No'}"
         )
         msg.exec()

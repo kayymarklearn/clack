@@ -11,6 +11,8 @@ DEFAULT_CONFIG = {
     "sound_profile": "clicky",
     "hotkey": "F12",
     "play_modifiers": True,
+    "play_mouse": True,
+    "double_click_interval_ms": 500,
     "startup": True,
 }
 
