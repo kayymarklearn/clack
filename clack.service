@@ -1,13 +1,16 @@
 [Unit]
 Description=Clack - Mechanical Keyboard Click Sound App
-After=graphical.target
+After=graphical-session.target
+Wants=graphical-session.target
+PartOf=graphical-session.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 ExecStart=/usr/bin/env python3 /home/konlan/Work/clack/clack.py
 Restart=on-failure
-Environment=DISPLAY=:0
-Environment=XDG_RUNTIME_DIR=/run/user/1000
+RestartSec=2
+Environment=QT_QPA_PLATFORM=wayland
 
 [Install]
-WantedBy=default.target
+WantedBy=graphical-session.target

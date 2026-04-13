@@ -4,7 +4,7 @@ Linux tray app that plays mechanical keyboard sounds on keypress. Inspired by th
 
 ## Features
 - Mechanical key sounds with three profiles: Clicky, Tactile, Linear
-- Mouse click sounds (right click + left double-click)
+- Mouse click sounds (left + right click)
 - Modifier key sound support
 - Tray toggle + default hotkey (**F12**)
 - Optional systemd user service
@@ -50,7 +50,6 @@ Config lives at `~/.config/clack/config.json`.
 Default hotkey: **F12**. Change `"hotkey"` in the config and restart the service/app.
 
 Mouse clicks: toggle `"play_mouse"` in the config or via the tray menu.
-Double-click timing can be tuned with `"double_click_interval_ms"` in the config.
 
 ## Acknowledgements
 Sound samples are derived from the **Klick** sound pack (MIT). See `THIRD_PARTY_NOTICES.txt`.

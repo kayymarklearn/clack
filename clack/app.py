@@ -29,10 +29,6 @@ class ClackApp:
         self.signals = Signals()
         self.listener = None
         self._last_hotkey_time = 0.0
-        self._last_left_click_time = 0.0
-        self._double_click_interval = (
-            self.config.get("double_click_interval_ms", 500) / 1000.0
-        )
 
         self._setup_tray()
         self.signals.toggle_requested.connect(self.toggle)
@@ -146,22 +142,29 @@ class ClackApp:
         if self.listener:
             return
 
+        pressed_mouse = set()
+
         def on_key(key_name, is_modifier, event_value=1):
-            if self._is_hotkey(key_name):
-                if event_value != 1:
+            mouse_button = self._mouse_button_from_key(key_name)
+            if mouse_button:
+                if event_value == 0:
+                    pressed_mouse.discard(mouse_button)
                     return
+                if event_value in (1, 2):
+                    if mouse_button in pressed_mouse:
+                        return
+                    pressed_mouse.add(mouse_button)
+                    if self.config["enabled"] and self.config.get("play_mouse", True):
+                        self._handle_mouse_click(mouse_button)
+                return
+
+            if event_value != 1:
+                return
+            if self._is_hotkey(key_name):
                 now = time.monotonic()
                 if now - self._last_hotkey_time > 0.5:
                     self._last_hotkey_time = now
                     self.signals.toggle_requested.emit()
-                return
-
-            mouse_button = self._mouse_button_from_key(key_name)
-            if mouse_button:
-                if event_value != 1:
-                    return
-                if self.config["enabled"] and self.config.get("play_mouse", True):
-                    self._handle_mouse_click(mouse_button)
                 return
 
             if self.config["enabled"]:
@@ -195,17 +198,8 @@ class ClackApp:
         self.audio.play_mouse(button)
 
     def _handle_mouse_click(self, button: str):
-        if button == "right":
-            self.signals.mouse_clicked.emit("right")
-            return
-
-        if button == "left":
-            now = time.monotonic()
-            if now - self._last_left_click_time <= self._double_click_interval:
-                self._last_left_click_time = 0.0
-                self.signals.mouse_clicked.emit("left")
-            else:
-                self._last_left_click_time = now
+        if button in ("left", "right"):
+            self.signals.mouse_clicked.emit(button)
 
     @staticmethod
     def _normalize_key(value: str) -> str:

@@ -86,8 +86,9 @@ class KeyboardListener(threading.Thread):
         from pynput import keyboard as pynput_keyboard
 
         logger.info("Using pynput for key detection")
+        pressed = set()
 
-        def on_press(key):
+        def _get_key_name(key):
             try:
                 key_name = (
                     key.char
@@ -96,12 +97,25 @@ class KeyboardListener(threading.Thread):
                 )
             except Exception:
                 key_name = str(key).replace("Key.", "")
+            return key_name.lower()
 
-            key_name = key_name.lower()
+        def on_press(key):
+            key_name = _get_key_name(key)
             is_modifier = key_name in MODIFIER_KEYS or "Key." in str(key)
-            self._callback(key_name, is_modifier, 1)
+            if key_name in pressed:
+                event_value = 2
+            else:
+                pressed.add(key_name)
+                event_value = 1
+            self._callback(key_name, is_modifier, event_value)
 
-        listener = pynput_keyboard.Listener(on_press=on_press)
+        def on_release(key):
+            key_name = _get_key_name(key)
+            pressed.discard(key_name)
+            is_modifier = key_name in MODIFIER_KEYS or "Key." in str(key)
+            self._callback(key_name, is_modifier, 0)
+
+        listener = pynput_keyboard.Listener(on_press=on_press, on_release=on_release)
         listener.start()
         logger.info("pynput listener started, waiting for keypresses...")
 
@@ -180,7 +194,7 @@ class KeyboardListener(threading.Thread):
                     for event in dev.read():
                         if event.type != ecodes.EV_KEY:
                             continue
-                        if event.value not in (1, 2):
+                        if event.value not in (0, 1, 2):
                             continue
                         name_entry = ecodes.bytype[ecodes.EV_KEY].get(event.code)
                         if isinstance(name_entry, tuple):
