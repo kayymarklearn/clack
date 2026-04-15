@@ -68,5 +68,7 @@ WayClick soundpacks (optional):
 - `"use_wayclick_sounds"`: `true` (default) will use `~/.config/wayclick/<pack>` if present.
 - `"wayclick_sound_pack"`: pack directory name (default: `audio_pack_1`).
 
+You can also switch packs from the tray menu via **WayClick Pack**.
+
 ## Acknowledgements
 Sound samples are derived from the **Klick** sound pack (MIT). See `THIRD_PARTY_NOTICES.txt`.

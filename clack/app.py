@@ -79,6 +79,20 @@ class ClackApp:
             self.menu.addAction(action)
 
         self.menu.addSeparator()
+        self.wayclick_label = QAction("WayClick Pack")
+        self.wayclick_label.setEnabled(False)
+        self.menu.addAction(self.wayclick_label)
+        self.wayclick_toggle_action = QAction(
+            "Use WayClick sounds",
+            checkable=True,
+            checked=self.config.get("use_wayclick_sounds", False),
+        )
+        self.wayclick_toggle_action.triggered.connect(self._toggle_wayclick_sounds)
+        self.menu.addAction(self.wayclick_toggle_action)
+        self._wayclick_pack_actions = []
+        self._wayclick_none_action = None
+        self.wayclick_end_separator = self.menu.addSeparator()
+        self.menu.aboutToShow.connect(self._refresh_wayclick_actions)
         self.mouse_action = QAction(
             "Mouse clicks",
             checkable=True,
@@ -229,6 +243,54 @@ class ClackApp:
 
         for key, action in self.profile_actions.items():
             action.setChecked(key == profile)
+
+    def _list_wayclick_packs(self):
+        base_dir = Path.home() / ".config" / "wayclick"
+        if not base_dir.is_dir():
+            return []
+        return sorted(
+            [path.name for path in base_dir.iterdir() if path.is_dir()]
+        )
+
+    def _clear_wayclick_pack_actions(self):
+        for action in self._wayclick_pack_actions:
+            self.menu.removeAction(action)
+        self._wayclick_pack_actions = []
+        if self._wayclick_none_action:
+            self.menu.removeAction(self._wayclick_none_action)
+            self._wayclick_none_action = None
+
+    def _refresh_wayclick_actions(self):
+        self.wayclick_toggle_action.setChecked(
+            self.config.get("use_wayclick_sounds", False)
+        )
+        self._clear_wayclick_pack_actions()
+
+        packs = self._list_wayclick_packs()
+        if not packs:
+            none_action = QAction("No packs found in ~/.config/wayclick")
+            none_action.setEnabled(False)
+            self.menu.insertAction(self.wayclick_end_separator, none_action)
+            self._wayclick_none_action = none_action
+            return
+
+        current_pack = self.config.get("wayclick_sound_pack", "audio_pack_1")
+        for pack in packs:
+            action = QAction(pack, checkable=True, checked=pack == current_pack)
+            action.triggered.connect(lambda checked, p=pack: self._set_wayclick_pack(p))
+            self.menu.insertAction(self.wayclick_end_separator, action)
+            self._wayclick_pack_actions.append(action)
+
+    def _toggle_wayclick_sounds(self, enabled: bool):
+        self.config["use_wayclick_sounds"] = enabled
+        save_config(self.config)
+        self.audio.update_config(self.config)
+
+    def _set_wayclick_pack(self, pack: str):
+        self.config["use_wayclick_sounds"] = True
+        self.config["wayclick_sound_pack"] = pack
+        save_config(self.config)
+        self.audio.update_config(self.config)
 
     def _set_mouse_clicks(self, enabled: bool):
         self.config["play_mouse"] = enabled

@@ -25,6 +25,10 @@ class AudioEngine:
         logger.info(f"AudioEngine initialized")
 
     def _load_sounds(self):
+        self._sounds = {}
+        self._modifier_sounds = {}
+        self._mouse_sounds = {}
+
         wayclick_pack = self._get_wayclick_pack_dir()
         if wayclick_pack and self._load_wayclick_pack(wayclick_pack):
             return
@@ -132,6 +136,10 @@ class AudioEngine:
     def set_volume(self, volume: float):
         self._volume = max(0.0, min(1.0, volume))
         logger.debug(f"Volume set to {self._volume}")
+
+    def update_config(self, config: dict):
+        self._config = config or {}
+        self._load_sounds()
 
     def play_click(self, key_name: str, profile: str, is_modifier: bool = False):
         logger.debug(
