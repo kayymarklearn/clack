@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import subprocess
@@ -12,17 +13,22 @@ logger = logging.getLogger(__name__)
 
 
 class AudioEngine:
-    def __init__(self):
+    def __init__(self, config=None):
         self._sounds = {}
         self._modifier_sounds = {}
         self._mouse_sounds = {}
         self._volume = 0.7
+        self._config = config or {}
         self._sounds_dir = get_sounds_dir()
         self._player = self._detect_player()
         self._load_sounds()
         logger.info(f"AudioEngine initialized")
 
     def _load_sounds(self):
+        wayclick_pack = self._get_wayclick_pack_dir()
+        if wayclick_pack and self._load_wayclick_pack(wayclick_pack):
+            return
+
         profiles = ["clicky", "tactile", "linear"]
 
         for profile in profiles:
@@ -55,6 +61,73 @@ class AudioEngine:
                 self._mouse_sounds["middle"] = str(middle)
             if default_mouse.exists():
                 self._mouse_sounds["default"] = str(default_mouse)
+
+    def _get_wayclick_pack_dir(self) -> Path | None:
+        if not self._config.get("use_wayclick_sounds", False):
+            return None
+
+        pack_name = self._config.get("wayclick_sound_pack", "audio_pack_1")
+        if not isinstance(pack_name, str) or not pack_name.strip():
+            return None
+
+        pack_dir = Path.home() / ".config" / "wayclick" / pack_name
+        if not pack_dir.is_dir():
+            logger.info("WayClick sound pack not found at %s", pack_dir)
+            return None
+
+        return pack_dir
+
+    def _load_wayclick_pack(self, pack_dir: Path) -> bool:
+        defaults = []
+        config_file = pack_dir / "config.json"
+        if config_file.exists():
+            try:
+                with open(config_file, "r") as f:
+                    data = json.load(f)
+                if isinstance(data.get("defaults"), list):
+                    defaults = [str(x) for x in data["defaults"] if str(x).strip()]
+            except Exception as e:
+                logger.warning("Failed to read %s: %s", config_file, e)
+
+        candidates = []
+        for name in defaults + [
+            "key1.wav",
+            "key2.wav",
+            "key3.wav",
+            "key4.wav",
+            "key5.wav",
+            "key6.wav",
+        ]:
+            if name not in candidates:
+                candidates.append(name)
+
+        existing = [name for name in candidates if (pack_dir / name).exists()]
+        if not existing:
+            logger.warning("No key sounds found in %s", pack_dir)
+            return False
+
+        profiles = ["clicky", "tactile", "linear"]
+        for idx, profile in enumerate(profiles):
+            sound_name = existing[min(idx, len(existing) - 1)]
+            self._sounds[profile] = str(pack_dir / sound_name)
+            logger.debug("Loaded %s (WayClick): %s", profile, sound_name)
+
+        for name in ["shift.wav", "rshift.wav", "ctrl.wav", "alt.wav", "caps.wav"]:
+            candidate = pack_dir / name
+            if candidate.exists():
+                self._modifier_sounds["default"] = str(candidate)
+                logger.debug("Loaded modifier (WayClick): %s", name)
+                break
+
+        mouse_file = pack_dir / "mouse.wav"
+        if mouse_file.exists():
+            self._mouse_sounds["left"] = str(mouse_file)
+            self._mouse_sounds["right"] = str(mouse_file)
+            self._mouse_sounds["middle"] = str(mouse_file)
+            self._mouse_sounds["default"] = str(mouse_file)
+            logger.debug("Loaded mouse (WayClick): mouse.wav")
+
+        return True
 
     def set_volume(self, volume: float):
         self._volume = max(0.0, min(1.0, volume))

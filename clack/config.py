@@ -12,6 +12,18 @@ DEFAULT_CONFIG = {
     "hotkey": "F12",
     "play_modifiers": True,
     "play_mouse": True,
+    "use_wayclick_sounds": True,
+    "wayclick_sound_pack": "audio_pack_1",
+    "enable_trackpad_sounds": False,
+    "auto_detect_trackpads": True,
+    "excluded_device_keywords": [
+        "touchpad",
+        "trackpad",
+        "glidepoint",
+        "magic trackpad",
+        "clickpad",
+    ],
+    "hotplug_poll_seconds": 1.0,
     "startup": True,
 }
 

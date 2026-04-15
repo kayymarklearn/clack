@@ -3,6 +3,7 @@ import os
 import select
 import sys
 import threading
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,14 @@ MODIFIER_KEYS = {
     "super",
 }
 
+DEFAULT_EXCLUDED_KEYWORDS = (
+    "touchpad",
+    "trackpad",
+    "glidepoint",
+    "magic trackpad",
+    "clickpad",
+)
+
 
 def _normalize_key_name(raw: str) -> str:
     name = raw.replace("KEY_", "").lower()
@@ -51,12 +60,13 @@ def _normalize_key_name(raw: str) -> str:
 
 
 class KeyboardListener(threading.Thread):
-    def __init__(self, callback):
+    def __init__(self, callback, config=None):
         super().__init__(daemon=True)
         self._callback = callback
         self._running = False
         self._devices = []
         self._backend = None
+        self._config = config or {}
 
     def run(self):
         self._running = True
@@ -124,8 +134,55 @@ class KeyboardListener(threading.Thread):
 
         listener.stop()
 
-    def _open_evdev_devices(self):
-        from evdev import InputDevice, list_devices, ecodes
+    def _normalize_keywords(self, value):
+        if isinstance(value, (list, tuple, set)):
+            keywords = [str(k).strip().lower() for k in value if str(k).strip()]
+        elif isinstance(value, str):
+            keywords = [k.strip().lower() for k in value.split(",") if k.strip()]
+        else:
+            keywords = []
+        return keywords
+
+    def _as_bool(self, value, default=False):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        if value is None:
+            return default
+        return bool(value)
+
+    def _get_hotplug_interval(self):
+        value = self._config.get("hotplug_poll_seconds", 1.0)
+        try:
+            interval = float(value)
+        except (TypeError, ValueError):
+            interval = 1.0
+        return max(0.1, interval)
+
+    def _should_ignore_device(self, dev, caps, ecodes):
+        if self._as_bool(self._config.get("enable_trackpad_sounds", False)):
+            return False, None
+
+        keywords = self._normalize_keywords(
+            self._config.get("excluded_device_keywords", DEFAULT_EXCLUDED_KEYWORDS)
+        )
+        name_lower = (dev.name or "").lower()
+        if keywords and any(keyword in name_lower for keyword in keywords):
+            return True, "keyword"
+
+        if self._as_bool(self._config.get("auto_detect_trackpads", True)):
+            abs_codes = caps.get(ecodes.EV_ABS, [])
+            key_codes = caps.get(ecodes.EV_KEY, [])
+            has_mt = ecodes.ABS_MT_POSITION_X in abs_codes
+            has_finger = ecodes.BTN_TOOL_FINGER in key_codes
+            if has_mt or has_finger:
+                return True, "touchpad"
+
+        return False, None
+
+    def _open_evdev_devices(self, paths, existing_paths, skipped_paths):
+        from evdev import InputDevice, ecodes
 
         devices = []
         keyboard_markers = {
@@ -140,12 +197,22 @@ class KeyboardListener(threading.Thread):
             ecodes.BTN_MIDDLE,
         }
 
-        for path in list_devices():
+        for path in paths:
+            if path in existing_paths or path in skipped_paths:
+                continue
             try:
                 dev = InputDevice(path)
-                keys = dev.capabilities().get(ecodes.EV_KEY, [])
+                caps = dev.capabilities(absinfo=False)
+                keys = caps.get(ecodes.EV_KEY, [])
                 if not keys:
                     dev.close()
+                    skipped_paths.add(path)
+                    continue
+                ignore, reason = self._should_ignore_device(dev, caps, ecodes)
+                if ignore:
+                    logger.info("Skipping %s (%s): %s", dev.name, dev.path, reason)
+                    dev.close()
+                    skipped_paths.add(path)
                     continue
                 keyset = set(k for k in keys if isinstance(k, int))
                 if not (
@@ -153,6 +220,7 @@ class KeyboardListener(threading.Thread):
                     or mouse_markers.intersection(keyset)
                 ):
                     dev.close()
+                    skipped_paths.add(path)
                     continue
                 devices.append(dev)
                 logger.info(f"Listening to {dev.path} ({dev.name})")
@@ -161,33 +229,50 @@ class KeyboardListener(threading.Thread):
                     "Permission denied for %s. Add user to input group or use udev rules.",
                     path,
                 )
+                skipped_paths.add(path)
             except OSError as e:
                 logger.warning("Failed to open %s: %s", path, e)
+                skipped_paths.add(path)
 
         return devices
 
     def _run_evdev(self):
-        from evdev import ecodes
+        from evdev import ecodes, list_devices
 
         logger.info("Using evdev for key detection")
-        devices = self._open_evdev_devices()
-
-        if not devices:
-            logger.error(
-                "No accessible keyboard devices. Check /dev/input permissions."
-            )
-            self._running = False
-            return
-
-        self._devices = devices
+        devices = []
+        device_paths = set()
+        skipped_paths = set()
+        hotplug_interval = self._get_hotplug_interval()
+        last_scan = 0.0
+        reported_no_devices = False
 
         while self._running:
+            now = time.monotonic()
+            if now - last_scan >= hotplug_interval:
+                all_paths = list_devices()
+                current_set = set(all_paths)
+                skipped_paths &= current_set
+                new_devices = self._open_evdev_devices(
+                    all_paths, device_paths, skipped_paths
+                )
+                for dev in new_devices:
+                    device_paths.add(dev.path)
+                    devices.append(dev)
+                last_scan = now
+                if devices:
+                    reported_no_devices = False
+
             if not devices:
-                devices = self._open_evdev_devices()
-                self._devices = devices
-                threading.Event().wait(1.0)
+                if not reported_no_devices:
+                    logger.error(
+                        "No accessible keyboard devices. Check /dev/input permissions."
+                    )
+                    reported_no_devices = True
+                threading.Event().wait(min(0.5, hotplug_interval))
                 continue
 
+            self._devices = devices
             ready, _, _ = select.select(devices, [], [], 0.5)
             for dev in ready:
                 try:
@@ -218,6 +303,7 @@ class KeyboardListener(threading.Thread):
                     except OSError:
                         pass
                     devices = [d for d in devices if d is not dev]
+                    device_paths.discard(dev.path)
                     self._devices = devices
 
         for dev in devices:

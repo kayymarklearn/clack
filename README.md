@@ -27,6 +27,13 @@ pip install -r requirements.txt
 python clack.py
 ```
 
+## WayClick soundpacks (optional)
+Clack can use WayClick soundpacks stored in `~/.config/wayclick/<pack>`. To install
+the default pack (`audio_pack_1`):
+```bash
+python -m clack.wayclick_sounds install
+```
+
 ## Permissions (required)
 ```bash
 sudo usermod -aG input $USER
@@ -50,6 +57,16 @@ Config lives at `~/.config/clack/config.json`.
 Default hotkey: **F12**. Change `"hotkey"` in the config and restart the service/app.
 
 Mouse clicks: toggle `"play_mouse"` in the config or via the tray menu.
+
+Trackpad filtering (evdev backend):
+- `"enable_trackpad_sounds"`: `false` (default) excludes touchpads/trackpads from sounds.
+- `"auto_detect_trackpads"`: `true` uses device capabilities to detect unnamed touchpads.
+- `"excluded_device_keywords"`: list of substrings matched against device names.
+- `"hotplug_poll_seconds"`: device rescan interval to pick up newly connected devices.
+
+WayClick soundpacks (optional):
+- `"use_wayclick_sounds"`: `true` (default) will use `~/.config/wayclick/<pack>` if present.
+- `"wayclick_sound_pack"`: pack directory name (default: `audio_pack_1`).
 
 ## Acknowledgements
 Sound samples are derived from the **Klick** sound pack (MIT). See `THIRD_PARTY_NOTICES.txt`.

@@ -23,7 +23,7 @@ class ClackApp:
         self.app.setQuitOnLastWindowClosed(False)
 
         self.config = load_config()
-        self.audio = AudioEngine()
+        self.audio = AudioEngine(self.config)
         self.audio.set_volume(self.config["volume"] / 100)
 
         self.signals = Signals()
@@ -170,7 +170,7 @@ class ClackApp:
             if self.config["enabled"]:
                 self.signals.key_pressed.emit(key_name, is_modifier)
 
-        self.listener = KeyboardListener(on_key)
+        self.listener = KeyboardListener(on_key, self.config)
         self.signals.key_pressed.connect(self._play_sound)
         self.listener.start()
 
@@ -237,13 +237,26 @@ class ClackApp:
     def _show_settings(self):
         msg = QMessageBox()
         msg.setWindowTitle("Clack Settings")
+        excluded = self.config.get("excluded_device_keywords", [])
+        if isinstance(excluded, str):
+            excluded = [v.strip() for v in excluded.split(",") if v.strip()]
+
+        use_wayclick = self.config.get("use_wayclick_sounds", False)
+        wayclick_pack = self.config.get("wayclick_sound_pack", "audio_pack_1")
+
         msg.setText(
             f"Current Settings:\n\n"
             f"Enabled: {'Yes' if self.config['enabled'] else 'No'}\n"
             f"Volume: {self.config['volume']}%\n"
             f"Sound: {self.config['sound_profile']}\n"
+            f"WayClick sounds: {'Yes' if use_wayclick else 'No'}\n"
+            f"WayClick pack: {wayclick_pack}\n"
             f"Hotkey: {self.config['hotkey']}\n"
             f"Mouse clicks: {'Yes' if self.config.get('play_mouse', True) else 'No'}\n"
+            f"Trackpad sounds: {'Yes' if self.config.get('enable_trackpad_sounds', False) else 'No'}\n"
+            f"Auto-detect trackpads: {'Yes' if self.config.get('auto_detect_trackpads', True) else 'No'}\n"
+            f"Hotplug poll: {self.config.get('hotplug_poll_seconds', 1.0)}s\n"
+            f"Excluded keywords: {', '.join(excluded)}\n"
             f"Auto-start: {'Yes' if self.config['startup'] else 'No'}"
         )
         msg.exec()
